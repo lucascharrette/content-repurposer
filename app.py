@@ -237,20 +237,31 @@ BODY:
 
 
 def parse_sections(text: str) -> dict:
-    markers = ["---THREAD---", "---INSTAGRAM---", "---VIDEO SCRIPT---", "---NEWSLETTER---"]
+    """Parse the AI output into 4 sections, tolerating header variations."""
+    canonical = {
+        "THREAD": "---THREAD---",
+        "INSTAGRAM": "---INSTAGRAM---",
+        "VIDEO SCRIPT": "---VIDEO SCRIPT---",
+        "NEWSLETTER": "---NEWSLETTER---",
+    }
+
+    # Match all common header variations: ---THREAD---, ## THREAD, **THREAD**, THREAD:, THREAD on its own line
+    pattern = re.compile(
+        r"^[\s\-#*=]*(THREAD|INSTAGRAM|VIDEO\s*SCRIPT|NEWSLETTER)[\s\-#*:=]*$",
+        re.MULTILINE | re.IGNORECASE,
+    )
+
+    matches = list(pattern.finditer(text))
     sections = {}
-    for i, marker in enumerate(markers):
-        start = text.find(marker)
-        if start == -1:
+    for i, m in enumerate(matches):
+        label = re.sub(r"\s+", " ", m.group(1).upper()).strip()
+        if label not in canonical:
             continue
-        start += len(marker)
-        end = len(text)
-        for next_marker in markers[i + 1:]:
-            pos = text.find(next_marker)
-            if pos != -1:
-                end = pos
-                break
-        sections[marker] = text[start:end].strip()
+        start = m.end()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[start:end].strip()
+        if body:
+            sections[canonical[label]] = body
     return sections
 
 
@@ -352,6 +363,7 @@ if generate:
             new_remaining = consume_use(visitor_id)
             st.session_state.last_output = {
                 "sections": sections,
+                "raw": raw_output,
                 "remaining": new_remaining,
             }
             st.rerun()
@@ -367,6 +379,7 @@ if st.session_state.last_output:
     sections = out["sections"]
     st.success(f"✅ Done! ({out['remaining']} free uses left today)")
 
+    EMPTY = "(this section came back empty — check the 'Raw output' expander below or try regenerating)"
     tab1, tab2, tab3, tab4 = st.tabs([
         "🧵 Twitter Thread",
         "📸 Instagram",
@@ -374,13 +387,16 @@ if st.session_state.last_output:
         "📧 Newsletter",
     ])
     with tab1:
-        st.text_area("Twitter/X Thread", sections.get("---THREAD---", ""), height=420)
+        st.text_area("Twitter/X Thread", sections.get("---THREAD---") or EMPTY, height=420)
     with tab2:
-        st.text_area("Instagram Caption + Hashtags", sections.get("---INSTAGRAM---", ""), height=420)
+        st.text_area("Instagram Caption + Hashtags", sections.get("---INSTAGRAM---") or EMPTY, height=420)
     with tab3:
-        st.text_area("Short-form Video Script", sections.get("---VIDEO SCRIPT---", ""), height=420)
+        st.text_area("Short-form Video Script", sections.get("---VIDEO SCRIPT---") or EMPTY, height=420)
     with tab4:
-        st.text_area("Newsletter (Subjects + Body)", sections.get("---NEWSLETTER---", ""), height=420)
+        st.text_area("Newsletter (Subjects + Body)", sections.get("---NEWSLETTER---") or EMPTY, height=420)
+
+    with st.expander("📄 Show raw AI output (useful if a section came back empty)"):
+        st.text(out.get("raw", ""))
 
     st.divider()
     st.markdown(f"💜 **Enjoying this?** [Join the waitlist]({WAITLIST_URL}) for unlimited access when premium launches.")
