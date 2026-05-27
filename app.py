@@ -13,7 +13,7 @@ import yt_dlp
 
 FREE_USES_PER_DAY = 3
 USAGE_FILE = Path(__file__).parent / "usage.json"
-WAITLIST_URL = "https://tally.so/r/REPLACE_ME"  # ← replace after setting up waitlist
+WAITLIST_URL = "https://tally.so/r/ODoWvK"
 _lock = threading.RLock()
 import datetime as _dt
 
