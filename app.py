@@ -13,6 +13,7 @@ import yt_dlp
 
 USES_PER_CODE = 50
 USAGE_FILE = Path(__file__).parent / "usage.json"
+GUMROAD_PRODUCT_PERMALINK = "content-repurposer"
 _lock = threading.RLock()
 
 def get_api_key() -> str:
@@ -21,22 +22,13 @@ def get_api_key() -> str:
     except Exception:
         return os.getenv("ANTHROPIC_API_KEY", "")
 
-def get_code_allotments() -> dict[str, int]:
+def get_test_codes() -> set[str]:
+    """Hardcoded test codes from secrets (for development/testing)."""
     try:
         raw = st.secrets["ACCESS_CODES"]
     except Exception:
         raw = os.getenv("ACCESS_CODES", "")
-    result = {}
-    for entry in raw.split(","):
-        entry = entry.strip()
-        if not entry:
-            continue
-        if ":" in entry:
-            code, limit = entry.split(":", 1)
-            result[code.strip()] = int(limit.strip())
-        else:
-            result[entry] = USES_PER_CODE
-    return result
+    return {c.strip() for c in raw.split(",") if c.strip()}
 
 def load_usage() -> dict:
     with _lock:
@@ -51,11 +43,41 @@ def save_usage(data: dict):
     with _lock:
         USAGE_FILE.write_text(json.dumps(data, indent=2))
 
+def verify_gumroad_license(code: str) -> bool:
+    """Verify a license key against Gumroad's API. Returns True if it's a real, non-refunded purchase."""
+    try:
+        response = requests.post(
+            "https://api.gumroad.com/v2/licenses/verify",
+            data={
+                "product_permalink": GUMROAD_PRODUCT_PERMALINK,
+                "license_key": code,
+                "increment_uses_count": "false",
+            },
+            timeout=10,
+        )
+        if response.status_code != 200:
+            return False
+        data = response.json()
+        if not data.get("success"):
+            return False
+        purchase = data.get("purchase", {})
+        # Reject refunded, disputed, or chargebacked purchases
+        if purchase.get("refunded") or purchase.get("chargebacked") or purchase.get("disputed"):
+            return False
+        return True
+    except Exception as e:
+        print(f"Gumroad verify error: {type(e).__name__}: {e}")
+        return False
+
+def is_valid_code(code: str) -> bool:
+    """Check if a code is either a test code or a valid Gumroad purchase."""
+    if code in get_test_codes():
+        return True
+    return verify_gumroad_license(code)
+
 def get_uses_remaining(code: str) -> int:
-    allotments = get_code_allotments()
-    if code not in allotments:
-        return 0
-    return max(0, allotments[code] - load_usage().get(code, 0))
+    used = load_usage().get(code, 0)
+    return max(0, USES_PER_CODE - used)
 
 def consume_use(code: str) -> int:
     with _lock:
@@ -94,15 +116,17 @@ if not st.session_state.authenticated:
         code_input = st.text_input("Access code", type="password", placeholder="XXXX-XXXX")
         if st.button("Unlock", type="primary", use_container_width=True):
             code = code_input.strip()
-            if code in get_code_allotments():
+            with st.spinner("Verifying..."):
+                valid = is_valid_code(code)
+            if valid:
                 if get_uses_remaining(code) > 0:
                     st.session_state.authenticated = True
                     st.session_state.access_code = code
                     st.rerun()
                 else:
-                    st.error("This access code has no uses remaining. Purchase a new one to continue.")
+                    st.error("This access code has used all 50 generations. Purchase again for more access.")
             else:
-                st.error("Invalid access code. Double-check and try again.")
+                st.error("Invalid access code. Double-check it from your purchase email.")
     st.stop()
 
 # ── Content fetching ──────────────────────────────────────────────────────────
