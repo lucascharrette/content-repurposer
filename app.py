@@ -257,7 +257,11 @@ def parse_sections(text: str) -> dict:
 # ── UI ────────────────────────────────────────────────────────────────────────
 
 st.title("⚡ Content Repurposer")
-st.caption("Turn any article, blog post, or YouTube video into a Twitter thread, Instagram caption, video script, and email newsletter — in seconds. **100% free.**")
+st.markdown(
+    "**Paste 1 article or YouTube link. Get 4 ready-to-post formats.** "
+    "Twitter thread · Instagram caption · TikTok script · Email newsletter. "
+    "Powered by AI. Free to use."
+)
 
 remaining = get_uses_remaining_today(visitor_id)
 
@@ -312,9 +316,26 @@ else:
 
 st.divider()
 
-col1, col2 = st.columns([1, 4])
+col1, col2, col3 = st.columns([1, 1, 3])
 with col1:
     generate = st.button("⚡ Repurpose", type="primary", use_container_width=True)
+with col2:
+    try_demo = st.button("🎬 Try demo", use_container_width=True, help="Use sample content to see how it works")
+
+if try_demo:
+    content = (
+        "The Pomodoro Technique is a time management method developed by Francesco Cirillo in the late 1980s. "
+        "It uses a timer to break work into intervals, traditionally 25 minutes in length, separated by short breaks. "
+        "These intervals are named pomodoros, from the Italian word for tomatoes. "
+        "The technique has six steps: pick a task, set the timer for 25 minutes, work on the task until the timer rings, "
+        "take a short break of 5 minutes, then after four pomodoros take a longer break of 15-30 minutes. "
+        "Studies show that short bursts of focused work followed by breaks improve mental agility, reduce burnout, "
+        "and help you stay focused on a single task without distractions. "
+        "Many top creators, founders, and students swear by it for getting deep work done. "
+        "The key insight is that our brains aren't built for marathon focus sessions — they need rhythm. "
+        "Working in 25-minute sprints respects your natural attention cycles and turns overwhelming tasks into manageable chunks."
+    )
+    generate = True
 
 if generate:
     if not content:
