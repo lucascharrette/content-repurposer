@@ -1,0 +1,22 @@
+# Secrets - NEVER commit these
+.streamlit/secrets.toml
+.env
+*.key
+
+# Usage tracking (regenerated per deploy)
+usage.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Logs
+*.log
