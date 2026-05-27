@@ -11,24 +11,17 @@ import yt_dlp
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-USES_PER_CODE = 50
+FREE_USES_PER_DAY = 3
 USAGE_FILE = Path(__file__).parent / "usage.json"
-GUMROAD_PRODUCT_PERMALINK = "content-repurposer"
+WAITLIST_URL = "https://tally.so/r/REPLACE_ME"  # ← replace after setting up waitlist
 _lock = threading.RLock()
+import datetime as _dt
 
 def get_api_key() -> str:
     try:
         return st.secrets["ANTHROPIC_API_KEY"]
     except Exception:
         return os.getenv("ANTHROPIC_API_KEY", "")
-
-def get_test_codes() -> set[str]:
-    """Hardcoded test codes from secrets (for development/testing)."""
-    try:
-        raw = st.secrets["ACCESS_CODES"]
-    except Exception:
-        raw = os.getenv("ACCESS_CODES", "")
-    return {c.strip() for c in raw.split(",") if c.strip()}
 
 def load_usage() -> dict:
     with _lock:
@@ -43,48 +36,30 @@ def save_usage(data: dict):
     with _lock:
         USAGE_FILE.write_text(json.dumps(data, indent=2))
 
-def verify_gumroad_license(code: str) -> bool:
-    """Verify a license key against Gumroad's API. Returns True if it's a real, non-refunded purchase."""
-    try:
-        response = requests.post(
-            "https://api.gumroad.com/v2/licenses/verify",
-            data={
-                "product_permalink": GUMROAD_PRODUCT_PERMALINK,
-                "license_key": code,
-                "increment_uses_count": "false",
-            },
-            timeout=10,
-        )
-        if response.status_code != 200:
-            return False
-        data = response.json()
-        if not data.get("success"):
-            return False
-        purchase = data.get("purchase", {})
-        # Reject refunded, disputed, or chargebacked purchases
-        if purchase.get("refunded") or purchase.get("chargebacked") or purchase.get("disputed"):
-            return False
-        return True
-    except Exception as e:
-        print(f"Gumroad verify error: {type(e).__name__}: {e}")
-        return False
+def _today_key() -> str:
+    return _dt.date.today().isoformat()
 
-def is_valid_code(code: str) -> bool:
-    """Check if a code is either a test code or a valid Gumroad purchase."""
-    if code in get_test_codes():
-        return True
-    return verify_gumroad_license(code)
+def get_visitor_id() -> str:
+    """Use Streamlit's session-stored visitor ID. Persists as long as the browser tab is open."""
+    if "visitor_id" not in st.session_state:
+        import uuid
+        st.session_state.visitor_id = str(uuid.uuid4())
+    return st.session_state.visitor_id
 
-def get_uses_remaining(code: str) -> int:
-    used = load_usage().get(code, 0)
-    return max(0, USES_PER_CODE - used)
+def get_uses_remaining_today(visitor_id: str) -> int:
+    usage = load_usage()
+    day = _today_key()
+    used = usage.get(visitor_id, {}).get(day, 0)
+    return max(0, FREE_USES_PER_DAY - used)
 
-def consume_use(code: str) -> int:
+def consume_use(visitor_id: str) -> int:
     with _lock:
         usage = load_usage()
-        usage[code] = usage.get(code, 0) + 1
+        day = _today_key()
+        usage.setdefault(visitor_id, {})
+        usage[visitor_id][day] = usage[visitor_id].get(day, 0) + 1
         save_usage(usage)
-    return get_uses_remaining(code)
+    return get_uses_remaining_today(visitor_id)
 
 # ── Page setup ────────────────────────────────────────────────────────────────
 
@@ -97,37 +72,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "access_code" not in st.session_state:
-    st.session_state.access_code = ""
 if "last_output" not in st.session_state:
     st.session_state.last_output = None
 
-# ── Password gate ─────────────────────────────────────────────────────────────
-
-if not st.session_state.authenticated:
-    st.title("⚡ Content Repurposer")
-    st.markdown("---")
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.subheader("Enter your access code")
-        st.caption("Purchase access to get your code.")
-        code_input = st.text_input("Access code", type="password", placeholder="XXXX-XXXX")
-        if st.button("Unlock", type="primary", use_container_width=True):
-            code = code_input.strip()
-            with st.spinner("Verifying..."):
-                valid = is_valid_code(code)
-            if valid:
-                if get_uses_remaining(code) > 0:
-                    st.session_state.authenticated = True
-                    st.session_state.access_code = code
-                    st.rerun()
-                else:
-                    st.error("This access code has used all 50 generations. Purchase again for more access.")
-            else:
-                st.error("Invalid access code. Double-check it from your purchase email.")
-    st.stop()
+visitor_id = get_visitor_id()
 
 # ── Content fetching ──────────────────────────────────────────────────────────
 
@@ -309,9 +257,9 @@ def parse_sections(text: str) -> dict:
 # ── UI ────────────────────────────────────────────────────────────────────────
 
 st.title("⚡ Content Repurposer")
-st.caption("Turn any article, blog post, or YouTube video into a Twitter thread, Instagram caption, video script, and email newsletter — in seconds.")
+st.caption("Turn any article, blog post, or YouTube video into a Twitter thread, Instagram caption, video script, and email newsletter — in seconds. **100% free.**")
 
-remaining = get_uses_remaining(st.session_state.access_code)
+remaining = get_uses_remaining_today(visitor_id)
 
 with st.sidebar:
     st.header("Settings")
@@ -320,11 +268,14 @@ with st.sidebar:
     st.markdown("**How to use**")
     st.markdown("1. Paste text, an article URL, or a YouTube link\n2. Choose a tone\n3. Click **Repurpose**\n4. Copy your content from each tab")
     st.divider()
-    st.caption(f"Uses remaining: **{remaining}**")
+    st.caption(f"Free uses today: **{remaining} / {FREE_USES_PER_DAY}**")
+    st.markdown(f"🔔 [**Join the waitlist for unlimited access**]({WAITLIST_URL})")
+    st.divider()
+    st.caption("Built by a 16-year-old founder.")
     st.caption("Powered by Claude (Anthropic)")
 
 if remaining <= 0:
-    st.error("You have no uses remaining on this access code. Purchase a new one to continue.")
+    st.warning(f"🎉 You've used your {FREE_USES_PER_DAY} free generations for today! Come back tomorrow, or [**join the waitlist**]({WAITLIST_URL}) for unlimited access (notified when launched).")
     st.stop()
 
 input_method = st.radio("Input method", ["Paste text", "URL or YouTube link"], horizontal=True)
@@ -378,7 +329,7 @@ if generate:
             with st.spinner("⚡ Generating your content..."):
                 raw_output = repurpose_content(content, tone)
             sections = parse_sections(raw_output)
-            new_remaining = consume_use(st.session_state.access_code)
+            new_remaining = consume_use(visitor_id)
             st.session_state.last_output = {
                 "sections": sections,
                 "remaining": new_remaining,
@@ -394,7 +345,7 @@ if generate:
 if st.session_state.last_output:
     out = st.session_state.last_output
     sections = out["sections"]
-    st.success(f"✅ Done! ({out['remaining']} uses remaining)")
+    st.success(f"✅ Done! ({out['remaining']} free uses left today)")
 
     tab1, tab2, tab3, tab4 = st.tabs([
         "🧵 Twitter Thread",
@@ -410,3 +361,6 @@ if st.session_state.last_output:
         st.text_area("Short-form Video Script", sections.get("---VIDEO SCRIPT---", ""), height=420)
     with tab4:
         st.text_area("Newsletter (Subjects + Body)", sections.get("---NEWSLETTER---", ""), height=420)
+
+    st.divider()
+    st.markdown(f"💜 **Enjoying this?** [Join the waitlist]({WAITLIST_URL}) for unlimited access. Built solo as a high schooler — your support means everything.")
