@@ -271,7 +271,6 @@ with st.sidebar:
     st.caption(f"Free uses today: **{remaining} / {FREE_USES_PER_DAY}**")
     st.markdown(f"🔔 [**Join the waitlist for unlimited access**]({WAITLIST_URL})")
     st.divider()
-    st.caption("Built by a 16-year-old founder.")
     st.caption("Powered by Claude (Anthropic)")
 
 if remaining <= 0:
@@ -363,4 +362,4 @@ if st.session_state.last_output:
         st.text_area("Newsletter (Subjects + Body)", sections.get("---NEWSLETTER---", ""), height=420)
 
     st.divider()
-    st.markdown(f"💜 **Enjoying this?** [Join the waitlist]({WAITLIST_URL}) for unlimited access. Built solo as a high schooler — your support means everything.")
+    st.markdown(f"💜 **Enjoying this?** [Join the waitlist]({WAITLIST_URL}) for unlimited access when premium launches.")
